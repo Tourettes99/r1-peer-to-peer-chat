@@ -16,6 +16,8 @@ class PeerConnectionManager {
             { urls: 'stun:stun2.l.google.com:19302' }
         ];
         this.roomPeers = new Set();
+        this.pollingInterval = null;
+        this.isPolling = false;
     }
 
     // Generate unique peer ID
@@ -228,6 +230,10 @@ class PeerConnectionManager {
                 }
                 this.updateConnectionStatus('connected');
             }
+            
+            // Start polling for notifications and signaling messages
+            this.startPolling();
+            
             this.isJoining = false;
             
         } catch (error) {
@@ -583,6 +589,24 @@ class PeerConnectionManager {
                     }
                 });
                 break;
+                
+            case 'notifications':
+                // Handle multiple notifications
+                if (message.notifications) {
+                    message.notifications.forEach(notification => {
+                        this.handleSignalingMessage(notification);
+                    });
+                }
+                break;
+                
+            case 'pending_signaling':
+                // Handle multiple signaling messages
+                if (message.messages) {
+                    message.messages.forEach(signalingMessage => {
+                        this.handleSignalingMessage(signalingMessage);
+                    });
+                }
+                break;
         }
     }
 
@@ -605,9 +629,92 @@ class PeerConnectionManager {
         }
     }
 
+    // Start polling for notifications and signaling messages
+    startPolling() {
+        if (this.isPolling) {
+            return;
+        }
+        
+        this.isPolling = true;
+        console.log('Starting polling for notifications and signaling messages...');
+        
+        this.pollingInterval = setInterval(async () => {
+            await this.pollForUpdates();
+        }, 2000); // Poll every 2 seconds
+    }
+    
+    // Stop polling
+    stopPolling() {
+        if (this.pollingInterval) {
+            clearInterval(this.pollingInterval);
+            this.pollingInterval = null;
+        }
+        this.isPolling = false;
+        console.log('Stopped polling');
+    }
+    
+    // Poll for notifications and signaling messages
+    async pollForUpdates() {
+        if (this.localSimulation || !this.roomId) {
+            return;
+        }
+        
+        try {
+            // Poll for notifications (peer joins/leaves)
+            const notificationsResponse = await fetch(this.getSignalingServerUrl(), {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    type: 'get_notifications',
+                    peerId: this.peerId
+                })
+            });
+            
+            if (notificationsResponse.ok) {
+                const notificationsData = await notificationsResponse.json();
+                if (notificationsData.notifications && notificationsData.notifications.length > 0) {
+                    console.log('Received notifications:', notificationsData.notifications);
+                    notificationsData.notifications.forEach(notification => {
+                        this.handleSignalingMessage(notification);
+                    });
+                }
+            }
+            
+            // Poll for pending signaling messages (offers, answers, ICE candidates)
+            const signalingResponse = await fetch(this.getSignalingServerUrl(), {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    type: 'get_pending_signaling',
+                    peerId: this.peerId
+                })
+            });
+            
+            if (signalingResponse.ok) {
+                const signalingData = await signalingResponse.json();
+                if (signalingData.messages && signalingData.messages.length > 0) {
+                    console.log('Received signaling messages:', signalingData.messages);
+                    signalingData.messages.forEach(message => {
+                        this.handleSignalingMessage(message);
+                    });
+                }
+            }
+            
+        } catch (error) {
+            console.error('Error polling for updates:', error);
+        }
+    }
+
     // Leave current room
     async leaveRoom() {
         console.log('Leaving room...');
+        
+        // Stop polling
+        this.stopPolling();
         
         try {
             // Notify signaling server

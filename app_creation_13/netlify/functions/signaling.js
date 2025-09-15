@@ -75,6 +75,12 @@ exports.handler = async (event, context) => {
             case 'heartbeat':
                 return handleHeartbeat(peerId, headers);
                 
+            case 'get_notifications':
+                return handleGetNotifications(peerId, headers);
+                
+            case 'get_pending_signaling':
+                return handleGetPendingSignaling(peerId, headers);
+                
             default:
                 return {
                     statusCode: 400,
@@ -137,6 +143,29 @@ function handleJoinRoom(peerId, roomId, deviceType, headers) {
     
     // Get other peers in room
     const otherPeers = Array.from(roomPeers).filter(id => id !== peerId);
+    
+    // Notify existing peers about the new peer joining
+    // In a real implementation, you'd use WebSockets or Server-Sent Events
+    // For now, we'll store this info and peers can poll for updates
+    if (otherPeers.length > 0) {
+        console.log(`Notifying ${otherPeers.length} existing peers about new peer ${peerId}`);
+        // Store peer join notification for other peers to discover
+        otherPeers.forEach(existingPeerId => {
+            if (!global.pendingNotifications) {
+                global.pendingNotifications = new Map();
+            }
+            if (!global.pendingNotifications.has(existingPeerId)) {
+                global.pendingNotifications.set(existingPeerId, []);
+            }
+            global.pendingNotifications.get(existingPeerId).push({
+                type: 'peer_joined',
+                peerId: peerId,
+                deviceType: deviceType,
+                roomId: roomId,
+                timestamp: Date.now()
+            });
+        });
+    }
     
     return {
         statusCode: 200,
@@ -383,6 +412,87 @@ function cleanupStalePeers() {
             console.log(`Removed stale peer: ${peerId}`);
         }
     }
+}
+
+// Handle getting notifications for a peer
+function handleGetNotifications(peerId, headers) {
+    if (!global.pendingNotifications || !global.pendingNotifications.has(peerId)) {
+        return {
+            statusCode: 200,
+            headers,
+            body: JSON.stringify({
+                type: 'notifications',
+                notifications: []
+            })
+        };
+    }
+    
+    const notifications = global.pendingNotifications.get(peerId) || [];
+    global.pendingNotifications.delete(peerId); // Clear after sending
+    
+    return {
+        statusCode: 200,
+        headers,
+        body: JSON.stringify({
+            type: 'notifications',
+            notifications: notifications
+        })
+    };
+}
+
+// Handle getting pending signaling messages for a peer
+function handleGetPendingSignaling(peerId, headers) {
+    const signalingMessages = [];
+    
+    // Check for pending offers
+    if (pendingOffers.has(peerId)) {
+        const offer = pendingOffers.get(peerId);
+        signalingMessages.push({
+            type: 'offer',
+            fromPeerId: offer.from,
+            offer: offer.offer,
+            roomId: offer.roomId,
+            timestamp: offer.timestamp
+        });
+        pendingOffers.delete(peerId);
+    }
+    
+    // Check for pending answers
+    if (pendingAnswers.has(peerId)) {
+        const answer = pendingAnswers.get(peerId);
+        signalingMessages.push({
+            type: 'answer',
+            fromPeerId: answer.from,
+            answer: answer.answer,
+            roomId: answer.roomId,
+            timestamp: answer.timestamp
+        });
+        pendingAnswers.delete(peerId);
+    }
+    
+    // Check for pending ICE candidates
+    if (iceCandidates.has(peerId)) {
+        const candidates = iceCandidates.get(peerId);
+        candidates.forEach(candidate => {
+            signalingMessages.push({
+                type: 'ice_candidate',
+                fromPeerId: candidate.from,
+                candidate: candidate.candidate,
+                roomId: candidate.roomId,
+                timestamp: candidate.timestamp
+            });
+        });
+        iceCandidates.delete(peerId);
+    }
+    
+    return {
+        statusCode: 200,
+        headers,
+        body: JSON.stringify({
+            type: 'pending_signaling',
+            messages: signalingMessages
+        })
+    };
 }
 
 // Run cleanup every 5 minutes
