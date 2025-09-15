@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Test Netlify Function Deployment</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .test-section { margin: 20px 0; padding: 15px; border: 1px solid #ddd; }
+        .success { background: #d4edda; border-color: #c3e6cb; }
+        .error { background: #f8d7da; border-color: #f5c6cb; }
+        .info { background: #d1ecf1; border-color: #bee5eb; }
+        button { margin: 5px; padding: 10px 15px; }
+        pre { background: #f8f9fa; padding: 10px; overflow-x: auto; }
+    </style>
+</head>
+<body>
+    <h1>Netlify Function Deployment Test</h1>
+    <p>This page tests if the Netlify function is properly deployed and accessible.</p>
+    
+    <div class="test-section info">
+        <h3>Current Site Info</h3>
+        <p><strong>Site URL:</strong> <span id="siteUrl"></span></p>
+        <p><strong>Function URL:</strong> <span id="functionUrl"></span></p>
+    </div>
+    
+    <div class="test-section">
+        <h3>Function Tests</h3>
+        <button onclick="testFunctionExists()">Test Function Exists</button>
+        <button onclick="testFunctionResponse()">Test Function Response</button>
+        <button onclick="testCORS()">Test CORS</button>
+        <button onclick="testRegister()">Test Register</button>
+    </div>
+    
+    <div class="test-section">
+        <h3>Test Results</h3>
+        <div id="results"></div>
+    </div>
+    
+    <script>
+        const siteUrl = window.location.origin;
+        const functionUrl = `${siteUrl}/.netlify/functions/signaling`;
+        
+        document.getElementById('siteUrl').textContent = siteUrl;
+        document.getElementById('functionUrl').textContent = functionUrl;
+        
+        function log(message, type = 'info') {
+            const resultsDiv = document.getElementById('results');
+            const div = document.createElement('div');
+            div.className = `test-section ${type}`;
+            div.innerHTML = `<pre>${new Date().toLocaleTimeString()}: ${message}</pre>`;
+            resultsDiv.appendChild(div);
+        }
+        
+        async function testFunctionExists() {
+            log('Testing if function exists...');
+            try {
+                const response = await fetch(functionUrl, {
+                    method: 'GET'
+                });
+                
+                if (response.status === 404) {
+                    log('❌ Function not found (404) - Function not deployed', 'error');
+                    log('Solution: Use Git deployment or Netlify CLI instead of drag-and-drop', 'error');
+                } else if (response.status === 405) {
+                    log('✅ Function exists (405 Method Not Allowed) - This is expected for GET requests', 'success');
+                } else {
+                    log(`✅ Function exists (Status: ${response.status})`, 'success');
+                }
+            } catch (error) {
+                log(`❌ Error testing function: ${error.message}`, 'error');
+            }
+        }
+        
+        async function testFunctionResponse() {
+            log('Testing function response...');
+            try {
+                const response = await fetch(functionUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ type: 'test' })
+                });
+                
+                const data = await response.json();
+                log(`✅ Function responded: ${JSON.stringify(data, null, 2)}`, 'success');
+            } catch (error) {
+                log(`❌ Error testing function response: ${error.message}`, 'error');
+            }
+        }
+        
+        async function testCORS() {
+            log('Testing CORS headers...');
+            try {
+                const response = await fetch(functionUrl, {
+                    method: 'OPTIONS'
+                });
+                
+                const corsHeaders = {
+                    'Access-Control-Allow-Origin': response.headers.get('Access-Control-Allow-Origin'),
+                    'Access-Control-Allow-Methods': response.headers.get('Access-Control-Allow-Methods'),
+                    'Access-Control-Allow-Headers': response.headers.get('Access-Control-Allow-Headers')
+                };
+                
+                log(`CORS Headers: ${JSON.stringify(corsHeaders, null, 2)}`, 'info');
+                
+                if (corsHeaders['Access-Control-Allow-Origin']) {
+                    log('✅ CORS headers present', 'success');
+                } else {
+                    log('❌ CORS headers missing', 'error');
+                }
+            } catch (error) {
+                log(`❌ Error testing CORS: ${error.message}`, 'error');
+            }
+        }
+        
+        async function testRegister() {
+            log('Testing register function...');
+            try {
+                const response = await fetch(functionUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        type: 'register',
+                        peerId: 'test_peer_' + Date.now(),
+                        deviceType: 'desktop'
+                    })
+                });
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    log(`✅ Register successful: ${JSON.stringify(data, null, 2)}`, 'success');
+                } else {
+                    log(`❌ Register failed: ${response.status} ${response.statusText}`, 'error');
+                }
+            } catch (error) {
+                log(`❌ Error testing register: ${error.message}`, 'error');
+            }
+        }
+        
+        // Auto-run basic tests
+        window.onload = function() {
+            log('Starting function deployment tests...');
+            setTimeout(testFunctionExists, 1000);
+        };
+    </script>
+</body>
+</html>

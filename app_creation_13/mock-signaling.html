@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Mock Signaling Server</title>
+</head>
+<body>
+    <h1>Mock Signaling Server</h1>
+    <p>This is a mock signaling server for local development.</p>
+    <p>It simulates the Netlify function responses for testing WebRTC connections.</p>
+    
+    <script>
+        // Mock signaling server for local development
+        const rooms = new Map();
+        const peers = new Map();
+        
+        // Handle POST requests
+        if (window.location.search.includes('mock=true')) {
+            // This would be handled by a proper server, but for demo purposes
+            // we'll just return a success response
+            document.body.innerHTML = `
+                <h1>Mock Signaling Response</h1>
+                <p>This would normally be a JSON response from the signaling server.</p>
+                <p>For local testing, the app will use simulated peer connections.</p>
+            `;
+        }
+    </script>
+</body>
+</html>
